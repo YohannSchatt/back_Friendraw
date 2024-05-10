@@ -5,34 +5,32 @@ var tokenAccessUser = new Map();
 var tokenPersistentUser = new Map();
 
 function authentificateToken(req, res, next)  {
-    PrintAllPseudoToken();
-    console.log(req.headers)
-    console.log(token);
-      
-    if (!token) {
-      return res.sendStatus(401);
+    //PrintAllPseudoToken();      
+    const result = verifyAccessToken(req.cookies.token); //si le token est bon
+    if (result.success) {
+      req.user = result.data; //ajoute les donnée de l'utilisateur à la requête 
+      next();
     }
-      
-    const result = verifyAccessToken(token); //si le token est bon
-      
-    if (!result.success) {
+    else {
       return res.status(403).json({ error: result.error });
     }
-      
-    req.user = result.data; //ajoute les donnée de l'utilisateur à la requête 
-    next();
 }
 
 function verifyAccessToken(token) {
     try {
       const decoded = jwt.verify(token, process.env.SECRET_KEY);
-      if  (decoded && findTokenUser(decoded.payload.pseudo) === token) {
-        return { success: true, data: decoded };
-      }
-      else {
-        throw new Error();
+      if (decoded) {
+        console.log(decoded)
+        console.log(decoded.pseudo);
+        if  (findTokenUser(decoded.pseudo) === token) {
+          console.log('success');
+          return { success: true, data: decoded };
+        }
+        else {
+          throw new Error();
+        } 
       } 
-    } 
+    }
     catch (error) {
       return { success: false, error: error.message };
     }
@@ -55,7 +53,7 @@ function appendMap(pseudo,token) {
 }
 
 function findTokenUser(pseudo) {
-  const token = tokenUser.get(pseudo);
+  const token = tokenAccessUser.get(pseudo);
   if (!token) {
     throw new Error();
   }

@@ -7,6 +7,7 @@ require('dotenv').config();
 const User = require('./user/user.js');
 const cors = require('cors');
 const middlewares = require('./middlewares/authentification')
+const session = require('express-session');
 
 const port = 3000; 
 
@@ -18,15 +19,17 @@ const pool = new Pool({
   port : 5432,
 })
 
-const corsOption = {
-  origin: true,
-  credentials: true,
-}
-
 const app = express();
-app.use(cors(corsOption));
+app.use(cors({ origin: 'http://localhost:5500', credentials: true }));
 app.use(bodyParser.json());
-app.use(cookieParser())
+app.use(cookieParser());
+
+app.use(session({
+  secret: process.env.SECRET_KEY,
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: true, httpOnly: true, maxAge: 900000, sameSite: 'none'}
+}));
 
 function get_hash(password){
   const saltRounds = 10;
@@ -95,13 +98,13 @@ app.post('/user/connexion', (req,res) => {
         const mdpcrypte = resultatSQL.rows[0].mdp;
         bcrypt.compare(mdp, mdpcrypte, (err, result) => {
           if(err) {
-            console.error("Erreur lors de la comparaison des mdp");
-            res.status(500).send("Erreur lors de la connexion")
+            console.error("Erreur pendant la comparaison des mdp");
+            res.status(500).send("Erreur lors de la connexion");
           }
           else {
             if(result){
               const token = User.generateAccessToken(resultatSQL.rows[0].pseudo);
-              res.cookie('token', token, { httpOnly: true });     
+              res.cookie('token', token, { httpOnly: true, maxAge: 900000, path:'/', secure: true, sameSite: 'none' });
               res.status(200).json( { success : true });
             }
             else{
