@@ -1,11 +1,13 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 
-var tokenUser = new Map();
+var tokenAccessUser = new Map();
+var tokenPersistentUser = new Map();
 
 function authentificateToken(req, res, next)  {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
+    PrintAllPseudoToken();
+    console.log(req.headers)
+    console.log(token);
       
     if (!token) {
       return res.sendStatus(401);
@@ -24,7 +26,12 @@ function authentificateToken(req, res, next)  {
 function verifyAccessToken(token) {
     try {
       const decoded = jwt.verify(token, process.env.SECRET_KEY);
-      return { success: true, data: decoded };
+      if  (decoded && findTokenUser(decoded.payload.pseudo) === token) {
+        return { success: true, data: decoded };
+      }
+      else {
+        throw new Error();
+      } 
     } 
     catch (error) {
       return { success: false, error: error.message };
@@ -44,7 +51,7 @@ function verifyPersistentToken(token) {
 }
 
 function appendMap(pseudo,token) {
-  tokenUser.set(pseudo,token);
+  tokenAccessUser.set(pseudo,token);
 }
 
 function findTokenUser(pseudo) {
@@ -56,17 +63,17 @@ function findTokenUser(pseudo) {
 }
 
 //renvoie un booleen
-function TokenExist(token) {
-  return tokenUser.has(token);
+function existToken(token) {
+  return tokenAccessUser.has(token);
 }
 
 function deleteTokenWithPseudo(pseudo){
-  tokenUser.delete(pseudo);
+  tokenAccessUser.delete(pseudo);
 }
 
 function deleteTokenWithToken(token){
   if (TokenExist()) {
-    for (var [key, value] of tokenUser){
+    for (var [key, value] of tokenAccessUser){
       if (value === token) {
         deleteTokenWithPseudo(key);
       }
@@ -77,4 +84,10 @@ function deleteTokenWithToken(token){
   }
 }
 
-module.exports = { authentificateToken, appendMap, findTokenUser, TokenExist, deleteTokenWithPseudo, deleteTokenWithToken };
+function PrintAllPseudoToken() {
+  for (var [key, value] of tokenAccessUser){
+    console.log("pseudo :" + key + ", token : " + token)
+  }
+}
+
+module.exports = { authentificateToken, appendMap, findTokenUser, existToken, deleteTokenWithPseudo, deleteTokenWithToken };

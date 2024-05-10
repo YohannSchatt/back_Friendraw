@@ -2,6 +2,7 @@ const express = require('express');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const bodyParser = require('body-parser');
+const cookieParser = require('cookie-parser');
 require('dotenv').config();
 const User = require('./user/user.js');
 const cors = require('cors');
@@ -17,9 +18,15 @@ const pool = new Pool({
   port : 5432,
 })
 
+const corsOption = {
+  origin: true,
+  credentials: true,
+}
+
 const app = express();
-app.use(cors());
+app.use(cors(corsOption));
 app.use(bodyParser.json());
+app.use(cookieParser())
 
 function get_hash(password){
   const saltRounds = 10;
@@ -94,17 +101,21 @@ app.post('/user/connexion', (req,res) => {
           else {
             if(result){
               const token = User.generateAccessToken(resultatSQL.rows[0].pseudo);
-              res.cookie('token', token, { httpOnly: false, maxAge: 3600000 });
-              res.status(200).send("success");
+              res.cookie('token', token, { httpOnly: true });     
+              res.status(200).json( { success : true });
             }
             else{
-              res.status(401).send("Identifiant invalide");
+              res.status(401).json( {success : false});
             }
           }
         })
       }
     }
   })
+})
+
+app.get('/user/verification', middlewares.authentificateToken, (req,res) =>{
+  res.status(200).send('success');
 })
 
 app.get('/', (req, res) => {
