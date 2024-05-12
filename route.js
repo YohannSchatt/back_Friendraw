@@ -21,7 +21,9 @@ const pool = new Pool({
 
 const app = express();
 app.use(cors({ origin: 'http://localhost:5500', credentials: true }));
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
+
 app.use(cookieParser());
 
 app.use(session({
@@ -117,9 +119,41 @@ app.post('/user/connexion', (req,res) => {
   })
 })
 
-app.get('/user/verification', middlewares.authentificateToken, (req,res) =>{
-  res.status(200).send('success');
+app.get('/user/deconnexion', middlewares.authentificateToken, (req,res) => {
+  console.log(req.user.pseudo);
+  middlewares.deleteTokenWithPseudo(req.user.pseudo)
+  res.status(200).json({ authorization: true });
 })
+
+app.get('/user/verification', middlewares.authentificateToken, (req,res) =>{
+  res.status(200).json({ authorization: true });
+})
+
+app.post('/dessin/ajout', middlewares.authentificateToken, (req,res) => {
+  const requete_SQL2 = 'CALL ajout_dessin($1,$2,$3,$4)' //ajout_dessin(imagedata BYTEA, visibilite INTEGER, nom VARCHAR, id_user INTEGER); visibilite = 1 => public / 2 => prive
+  pool.query(requete_SQL2, [req.body.imageData,req.body.public,req.body.nom,FoundIdWithPseudo(req.user.pseudo)],(erreur, resultat) => {
+    if (erreur) {
+      console.error("problème d'ajout dans la bdd", erreur);
+      res.status(500);
+    } else {
+      // Renvoie les résultats de la requête en tant que réponse HTTP
+      res.status(201).json({authorization: true});
+    }
+  }) 
+})
+
+function FoundIdWithPseudo(pseudo) {
+  const requete_SQL1 = 'SELECT id_user FROM utilisateur WHERE pseudo=$1'
+  pool.query(requete_SQL1, [pseudo], (erreur,resultat) => {
+    if (erreur) {
+      console.log("problème dans la recherche de l'utilisateur");
+      res.status(500) //car comme il passe par le middleware, si la requête arrive ici il y a un problème majeur
+    }
+    else {
+      return resultat.rows[0].id_user //id unique par pseudo
+    }
+  })
+}
 
 app.get('/', (req, res) => {
   res.send('Hello, World!');

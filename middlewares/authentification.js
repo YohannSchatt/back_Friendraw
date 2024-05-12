@@ -12,7 +12,7 @@ function authentificateToken(req, res, next)  {
       next();
     }
     else {
-      return res.status(403).json({ error: result.error });
+      return res.status(200).json({ authorization: false });
     }
 }
 
@@ -84,7 +84,7 @@ function deleteTokenWithToken(token){
 
 function PrintAllPseudoToken() {
   for (var [key, value] of tokenAccessUser){
-    console.log("pseudo :" + key + ", token : " + token)
+    console.log("pseudo :" + key + ", token : " + value)
   }
 }
 
