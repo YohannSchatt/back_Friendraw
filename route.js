@@ -23,7 +23,7 @@ const app = express();
 app.use(cors({ origin: 'http://localhost:5500', credentials: true }));
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
-
+app.use(bodyParser.raw({ type: 'application/octet-stream' }));
 app.use(cookieParser());
 
 app.use(session({
@@ -129,31 +129,69 @@ app.get('/user/verification', middlewares.authentificateToken, (req,res) =>{
   res.status(200).json({ authorization: true });
 })
 
-app.post('/dessin/ajout', middlewares.authentificateToken, (req,res) => {
-  const requete_SQL2 = 'CALL ajout_dessin($1,$2,$3,$4)' //ajout_dessin(imagedata BYTEA, visibilite INTEGER, nom VARCHAR, id_user INTEGER); visibilite = 1 => public / 2 => prive
-  pool.query(requete_SQL2, [req.body.imageData,req.body.public,req.body.nom,FoundIdWithPseudo(req.user.pseudo)],(erreur, resultat) => {
-    if (erreur) {
-      console.error("problème d'ajout dans la bdd", erreur);
-      res.status(500);
-    } else {
-      // Renvoie les résultats de la requête en tant que réponse HTTP
-      res.status(201).json({authorization: true});
-    }
-  }) 
-})
-
 function FoundIdWithPseudo(pseudo) {
-  const requete_SQL1 = 'SELECT id_user FROM utilisateur WHERE pseudo=$1'
-  pool.query(requete_SQL1, [pseudo], (erreur,resultat) => {
-    if (erreur) {
-      console.log("problème dans la recherche de l'utilisateur");
-      res.status(500) //car comme il passe par le middleware, si la requête arrive ici il y a un problème majeur
-    }
-    else {
-      return resultat.rows[0].id_user //id unique par pseudo
-    }
-  })
+  return new Promise((resolve, reject) => {
+    const requete_SQL1 = "SELECT id_user FROM utilisateur WHERE pseudo=$1";
+    pool.query(requete_SQL1, [pseudo], (erreur, resultat) => {
+      if (erreur) {
+        console.log("problème dans la recherche de l'utilisateur", erreur);
+        reject(erreur);
+      } else {
+        console.log(resultat.rows[0].id_user);
+        resolve(resultat.rows[0].id_user); // Renvoie l'ID unique par pseudo
+      }
+    });
+  });
 }
+
+app.post('/dessin/ajout', middlewares.authentificateToken, async (req, res) => {
+  try {
+    const id_user = await FoundIdWithPseudo(req.user.pseudo);
+    const requete_SQL2 = 'CALL ajout_dessin($1, $2, $3, $4)';
+    console.log(req.body.imageData);
+    pool.query(requete_SQL2, [req.body.imageData, req.body.public, req.body.nom, id_user], (erreur, resultat) => {
+      if (erreur) {
+        console.error("problème d'ajout dans la bdd", erreur);
+        res.status(500).send("Erreur lors de l'ajout dans la base de données");
+      } else {
+        res.status(201).json({authorization: true});
+      }
+    });
+  } catch (error) {
+    console.error("Une erreur est survenue", error);
+    res.status(500).send("Une erreur est survenue lors de la recherche de l'utilisateur");
+  }
+});
+
+app.get('/dessin/chercher', middlewares.authentificateToken, async (req, res) => {
+  try {
+    const id_user = await FoundIdWithPseudo(req.user.pseudo);
+    const requete_SQL = 'SELECT imageData, nom, visibilite, favori FROM dessin WHERE id_user = $1';
+    pool.query(requete_SQL, [id_user], (erreur, resultat) => {
+      if (erreur) {
+        console.error("problème de recherche dans la bdd", erreur);
+        res.status(500).send("Erreur lors de la recherche dans la base de données");
+      } else {
+        const images = resultat.rows.map(row => ({
+          imageData: row.imageData,
+          nom: row.nom,
+          visibilite: row.visibilite,
+          favori: row.favori
+        }));
+        console.log(images[5]);
+        res.status(200).json({
+          authorization: true,
+          images: images
+        });
+      }
+    });
+  } catch (error) {
+    console.error("Une erreur est survenue", error);
+    res.status(500).send("Une erreur est survenue lors de la recherche de l'utilisateur");
+  }
+});
+
+
 
 app.get('/', (req, res) => {
   res.send('Hello, World!');
