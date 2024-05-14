@@ -102,7 +102,7 @@ app.post('/user/inscription', (req, res) => {
 
 app.post('/user/connexion', (req,res) => {
   const { email, mdp } = req.body;
-  const requete_SQL = 'SELECT mdp,pseudo FROM utilisateur WHERE adresse_mail = $1'
+  const requete_SQL = 'SELECT mdp,pseudo,droit FROM utilisateur WHERE adresse_mail = $1'
   pool.query(requete_SQL, [email], (erreur, resultatSQL) => {
     if (erreur){
       console.log("Erreur lors de l'exécution de la requête");
@@ -121,7 +121,7 @@ app.post('/user/connexion', (req,res) => {
           }
           else {
             if(result){
-              const token = User.generateAccessToken(resultatSQL.rows[0].pseudo);
+              const token = User.generateAccessToken(resultatSQL.rows[0].pseudo,resultatSQL.rows[0].droit);
               res.cookie('token', token, { httpOnly: true, maxAge: 900000, path:'/', secure: true, sameSite: 'none' });
               res.status(200).json( { success : true });
             }
@@ -164,21 +164,11 @@ app.post('/dessin/ajout', middlewares.authentificateToken,upload.single('file'),
   try {
     const id_user = await FoundIdWithPseudo(req.user.pseudo);
     const nom = req.body.nom;
-    const visibilite = req.body.public;
+    const visibilite = req.body.public; //necessite d'utiliser un parser d'un form car le json empêche l'envoie correct des fichiers
     const imageFile = req.body.file;
     const base64Data = imageFile.replace(/^data:image\/png;base64,/, '')
-    const pathFile = `./png/${req.user.pseudo}/${nom}.png` 
-    fs.writeFile(pathFile, Buffer.from(base64Data, 'base64'), function (err) {
-      if (err) {
-          console.error(err);
-          return res.status(500).send('Erreur lors de l\'enregistrement de l\'image.');
-      }
-      else {
-        console.log('image enregistré avec succès')
-      }
-    })
     const requete_SQL = 'CALL ajout_dessin($1, $2, $3, $4)';
-    pool.query(requete_SQL, [pathFile, nom, public, id_user], (erreur, resultat) => {
+    pool.query(requete_SQL, [base64Data,visibilite,nom, id_user], (erreur, resultat) => {
       if (erreur) {
         console.error("problème d'ajout dans la bdd", erreur);
         res.status(500).send("Erreur lors de l'ajout dans la base de données");
@@ -186,7 +176,8 @@ app.post('/dessin/ajout', middlewares.authentificateToken,upload.single('file'),
         res.status(201).json({authorization: true});
       }
     });
-  } catch (error) {
+  }
+  catch (error) {
     console.error("Une erreur est survenue", error);
     res.status(500).send("Une erreur est survenue lors de la recherche de l'utilisateur");
   }
@@ -201,7 +192,7 @@ app.get('/dessin/chercher', middlewares.authentificateToken, async (req, res) =>
         console.error("problème de recherche dans la bdd", erreur);
         res.status(500).send("Erreur lors de la recherche dans la base de données");
       } else {
-        const images = resultat.rows.map(row => ({
+        const images = resultat.rows.map(row => ({ //crée un tableau de dictionnaire avec les données de chaque image
           imageData: row.image,
           nom: row.nom,
           visibilite: row.visibilite,
@@ -214,7 +205,8 @@ app.get('/dessin/chercher', middlewares.authentificateToken, async (req, res) =>
         });
       }
     });
-  } catch (error) {
+  } 
+  catch (error) {
     console.error("Une erreur est survenue", error);
     res.status(500).send("Une erreur est survenue lors de la recherche de l'utilisateur");
   }

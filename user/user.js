@@ -2,9 +2,10 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const middlewares = require('../middlewares/authentification.js')
 
-function generateAccessToken(pseudo) {
+function generateAccessToken(pseudo,right) {
     const payload = {
       pseudo: pseudo,
+      right: right
     };
     const options = { expiresIn: '15min' };
     token = jwt.sign(payload, process.env.SECRET_KEY,options);
