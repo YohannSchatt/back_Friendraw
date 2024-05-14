@@ -8,6 +8,9 @@ const User = require('./user/user.js');
 const cors = require('cors');
 const middlewares = require('./middlewares/authentification')
 const session = require('express-session');
+const multer  = require('multer'); // Middleware pour gérer les fichiers
+const fs = require('fs');
+
 
 const port = 3000; 
 
@@ -23,7 +26,6 @@ const app = express();
 app.use(cors({ origin: 'http://localhost:5500', credentials: true }));
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
-app.use(bodyParser.raw({ type: 'application/octet-stream' }));
 app.use(cookieParser());
 
 app.use(session({
@@ -32,6 +34,20 @@ app.use(session({
   saveUninitialized: false,
   cookie: { secure: true, httpOnly: true, maxAge: 900000, sameSite: 'none'}
 }));
+
+// Configuration de multer
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+      // Spécifiez le répertoire de destination où les fichiers téléchargés seront enregistrés
+      cb(null, './uploads/')
+  },
+  filename: function (req, file, cb) {
+      // Spécifiez le nom de fichier pour chaque fichier téléchargé
+      cb(null, file.originalname)
+  }
+});
+
+const upload = multer({ storage: storage });
 
 function get_hash(password){
   const saltRounds = 10;
@@ -70,7 +86,6 @@ app.post('/token/refresh', (req, res) => {
 
 app.post('/user/inscription', (req, res) => {
   const { pseudo, mdp, email } = req.body;
-  console.log(mdp)
   const requete_SQL = `CALL ajout_user($1, $2, $3)`;
   const valeurs = [pseudo,get_hash(mdp),email];
   pool.query(requete_SQL, valeurs,(erreur, resultat) => {
@@ -79,6 +94,7 @@ app.post('/user/inscription', (req, res) => {
       res.status(202).send("L'email ou le pseudo est déjà utilisé");
     } else {
       // Renvoie les résultats de la requête en tant que réponse HTTP
+      fs.mkdir(`${pseudo}`)
       res.status(201).send("success");
     }
   })
@@ -144,12 +160,25 @@ function FoundIdWithPseudo(pseudo) {
   });
 }
 
-app.post('/dessin/ajout', middlewares.authentificateToken, async (req, res) => {
+app.post('/dessin/ajout', middlewares.authentificateToken,upload.single('file'), async (req, res) => {
   try {
     const id_user = await FoundIdWithPseudo(req.user.pseudo);
-    const requete_SQL2 = 'CALL ajout_dessin($1, $2, $3, $4)';
-    console.log(req.body.imageData);
-    pool.query(requete_SQL2, [req.body.imageData, req.body.public, req.body.nom, id_user], (erreur, resultat) => {
+    const nom = req.body.nom;
+    const visibilite = req.body.public;
+    const imageFile = req.body.file;
+    const base64Data = imageFile.replace(/^data:image\/png;base64,/, '')
+    const pathFile = `./png/${req.user.pseudo}/${nom}.png` 
+    fs.writeFile(pathFile, Buffer.from(base64Data, 'base64'), function (err) {
+      if (err) {
+          console.error(err);
+          return res.status(500).send('Erreur lors de l\'enregistrement de l\'image.');
+      }
+      else {
+        console.log('image enregistré avec succès')
+      }
+    })
+    const requete_SQL = 'CALL ajout_dessin($1, $2, $3, $4)';
+    pool.query(requete_SQL, [pathFile, nom, public, id_user], (erreur, resultat) => {
       if (erreur) {
         console.error("problème d'ajout dans la bdd", erreur);
         res.status(500).send("Erreur lors de l'ajout dans la base de données");
@@ -166,19 +195,19 @@ app.post('/dessin/ajout', middlewares.authentificateToken, async (req, res) => {
 app.get('/dessin/chercher', middlewares.authentificateToken, async (req, res) => {
   try {
     const id_user = await FoundIdWithPseudo(req.user.pseudo);
-    const requete_SQL = 'SELECT imageData, nom, visibilite, favori FROM dessin WHERE id_user = $1';
+    const requete_SQL = 'SELECT image, nom, visibilite, favori FROM dessin WHERE id_user = $1';
     pool.query(requete_SQL, [id_user], (erreur, resultat) => {
       if (erreur) {
         console.error("problème de recherche dans la bdd", erreur);
         res.status(500).send("Erreur lors de la recherche dans la base de données");
       } else {
         const images = resultat.rows.map(row => ({
-          imageData: row.imageData,
+          imageData: row.image,
           nom: row.nom,
           visibilite: row.visibilite,
           favori: row.favori
         }));
-        console.log(images[5]);
+        console.log(images[0]);
         res.status(200).json({
           authorization: true,
           images: images
