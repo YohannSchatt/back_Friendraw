@@ -4,8 +4,7 @@ const bcrypt = require('bcrypt');
 var tokenAccessUser = new Map();
 var tokenPersistentUser = new Map();
 
-function authentificateToken(req, res, next)  {
-    //PrintAllPseudoToken();      
+function authentificateToken(req, res, next)  {    
     const result = verifyAccessToken(req.cookies.token); //si le token est bon
     if (result.success) {
       req.user = result.data; //ajoute les donnée de l'utilisateur à la requête 
@@ -20,10 +19,7 @@ function verifyAccessToken(token) {
     try {
       const decoded = jwt.verify(token, process.env.SECRET_KEY);
       if (decoded) {
-        console.log(decoded)
-        console.log(decoded.pseudo);
-        if  (findTokenUser(decoded.pseudo) === token) {
-          console.log('success');
+        if  (findTokenUser(decoded.id_user) === token) {
           return { success: true, data: decoded };
         }
         else {
@@ -37,19 +33,24 @@ function verifyAccessToken(token) {
 }
 
     // Verify a refresh token
-function verifyPersistentToken(token) {
-  const secret = 'your-refresh-token-secret';   
-  try {
-    const decoded = jwt.verify(token, secret);
-    return { success: true, data: decoded };
-  } 
-  catch (error) {
-    return { success: false, error: error.message };
-  }
+function CreateRefreshToken(id_user,right) {
+  const payload = {
+    id_user: id_user,
+    right:right
+  };
+  const options = { expiresIn: '15min' };
+  appendMap(id_user,token);
+  console.log('refresh');
+  return jwt.sign(payload, process.env.SECRET_KEY, options);
 }
 
-function appendMap(pseudo,token) {
-  tokenAccessUser.set(pseudo,token);
+function sendRefreshToken(user,res){
+  const token = CreateRefreshToken(user.id_user,user.right)
+  res.cookie('token',token, {httpOnly: true, maxAge: 900000, path:'/'});
+}
+
+function appendMap(id_user,token) {
+  tokenAccessUser.set(id_user,token);
 }
 
 function findTokenUser(pseudo) {
@@ -65,15 +66,15 @@ function existToken(token) {
   return tokenAccessUser.has(token);
 }
 
-function deleteTokenWithPseudo(pseudo){
-  tokenAccessUser.delete(pseudo);
+function deleteTokenWithId(id){
+  tokenAccessUser.delete(id);
 }
 
 function deleteTokenWithToken(token){
   if (TokenExist()) {
     for (var [key, value] of tokenAccessUser){
       if (value === token) {
-        deleteTokenWithPseudo(key);
+        deleteTokenWithId(key);
       }
     }
   }
@@ -88,4 +89,4 @@ function PrintAllPseudoToken() {
   }
 }
 
-module.exports = { authentificateToken, appendMap, findTokenUser, existToken, deleteTokenWithPseudo, deleteTokenWithToken };
+module.exports = { sendRefreshToken,authentificateToken, appendMap, findTokenUser, existToken, deleteTokenWithId, deleteTokenWithToken };

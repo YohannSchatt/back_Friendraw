@@ -10,6 +10,7 @@ const middlewares = require('./middlewares/authentification')
 const session = require('express-session');
 const multer  = require('multer'); // Middleware pour gérer les fichiers
 const fs = require('fs');
+const { rejects } = require('assert');
 
 
 const port = 3000; 
@@ -27,13 +28,6 @@ app.use(cors({ origin: 'http://localhost:5500', credentials: true }));
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 app.use(cookieParser());
-
-app.use(session({
-  secret: process.env.SECRET_KEY,
-  resave: false,
-  saveUninitialized: false,
-  cookie: { secure: true, httpOnly: true, maxAge: 900000, sameSite: 'none'}
-}));
 
 // Configuration de multer
 const storage = multer.diskStorage({
@@ -69,20 +63,6 @@ app.get('/user', (req, res) => {
   });
 });
 
-// Refresh an access token using a valid refresh token
-app.post('/token/refresh', (req, res) => {
-  const refreshToken = req.body.refreshToken;
-  if (!refreshToken) {
-    return res.sendStatus(401);
-  }
-  const result = verifyRefreshToken(refreshToken);  
-  if (!result.success) {
-    return res.status(403).json({ error: result.error });
-  }
-  const user = result.data;
-  const newAccessToken = generateAccessToken(user);
-  res.json({ accessToken: newAccessToken });
-  });
 
 app.post('/user/inscription', (req, res) => {
   const { pseudo, mdp, email } = req.body;
@@ -93,8 +73,6 @@ app.post('/user/inscription', (req, res) => {
       console.error('Erreur lors de l\'exécution de la requête', erreur);
       res.status(202).send("L'email ou le pseudo est déjà utilisé");
     } else {
-      // Renvoie les résultats de la requête en tant que réponse HTTP
-      fs.mkdir(`${pseudo}`)
       res.status(201).send("success");
     }
   })
@@ -102,7 +80,7 @@ app.post('/user/inscription', (req, res) => {
 
 app.post('/user/connexion', (req,res) => {
   const { email, mdp } = req.body;
-  const requete_SQL = 'SELECT mdp,pseudo,droit FROM utilisateur WHERE adresse_mail = $1'
+  const requete_SQL = 'SELECT mdp,id_user,pseudo,droit FROM utilisateur WHERE adresse_mail = $1'
   pool.query(requete_SQL, [email], (erreur, resultatSQL) => {
     if (erreur){
       console.log("Erreur lors de l'exécution de la requête");
@@ -121,9 +99,9 @@ app.post('/user/connexion', (req,res) => {
           }
           else {
             if(result){
-              const token = User.generateAccessToken(resultatSQL.rows[0].pseudo,resultatSQL.rows[0].droit);
-              res.cookie('token', token, { httpOnly: true, maxAge: 900000, path:'/', secure: true, sameSite: 'none' });
-              res.status(200).json( { success : true });
+              const token = User.generateAccessToken(resultatSQL.rows[0].id_user,resultatSQL.rows[0].droit);
+              res.cookie('token', token, { httpOnly: true, maxAge: 900000, path:'/'});
+              res.status(200).json( { success : true , pseudo : resultatSQL.rows[0].pseudo});
             }
             else{
               res.status(401).json( {success : false});
@@ -136,16 +114,17 @@ app.post('/user/connexion', (req,res) => {
 })
 
 app.get('/user/deconnexion', middlewares.authentificateToken, (req,res) => {
-  console.log(req.user.pseudo);
-  middlewares.deleteTokenWithPseudo(req.user.pseudo)
+  middlewares.deleteTokenWithId(req.user.id_user)
+  res.clearCookie('token');
   res.status(200).json({ authorization: true });
 })
 
 app.get('/user/verification', middlewares.authentificateToken, (req,res) =>{
+  //middlewares.sendRefreshToken(req.user,res);
   res.status(200).json({ authorization: true });
 })
 
-function FoundIdWithPseudo(pseudo) {
+function FoundIdUserWithPseudo(pseudo) {
   return new Promise((resolve, reject) => {
     const requete_SQL1 = "SELECT id_user FROM utilisateur WHERE pseudo=$1";
     pool.query(requete_SQL1, [pseudo], (erreur, resultat) => {
@@ -160,10 +139,25 @@ function FoundIdWithPseudo(pseudo) {
   });
 }
 
-app.post('/dessin/ajout', middlewares.authentificateToken,upload.single('file'), async (req, res) => {
+function FoundIdDessinWithNomAndIdUser(id_user,nom) {
+  return new Promise((resolve, reject) => {
+    const requete_SQL = "SELECT id_dessin FROM dessin WHERE id_user=$1 and nom = $2";
+    pool.query(requete_SQL, [id_user,nom], (erreur, resultat) => {
+      if (erreur) {
+        console.log("problème dans la recherche de l'utilisateur", erreur);
+        reject(erreur);
+      } else {
+        console.log(resultat.rows[0].id_dessin);
+        resolve(resultat.rows[0].id_dessin); // Renvoie l'ID unique par pseudo
+      }
+    });
+  });
+}
+
+app.post('/user/dessin', middlewares.authentificateToken,upload.single('file'), async (req, res) => {
   try {
-    const id_user = await FoundIdWithPseudo(req.user.pseudo);
-    const nom = req.body.nom;
+    const id_user = req.user.id_user;
+    const nom = req.body.newName;
     const visibilite = req.body.public; //necessite d'utiliser un parser d'un form car le json empêche l'envoie correct des fichiers
     const imageFile = req.body.file;
     const base64Data = imageFile.replace(/^data:image\/png;base64,/, '')
@@ -183,9 +177,50 @@ app.post('/dessin/ajout', middlewares.authentificateToken,upload.single('file'),
   }
 });
 
-app.get('/dessin/chercher', middlewares.authentificateToken, async (req, res) => {
+app.post('/user/dessin/select', middlewares.authentificateToken, async (req,res) => {
   try {
-    const id_user = await FoundIdWithPseudo(req.user.pseudo);
+    const id_user = req.user.id_user
+    const requete_SQL = 'SELECT image FROM dessin WHERE id_user = $1 and nom = $2';
+    pool.query(requete_SQL,[id_user,req.body.nom], (erreur, resultat) => {
+      if (erreur) {
+        console.error("problème de recherche dans la bdd", erreur);
+        res.status(500).send("Erreur lors de la recherche dans la base de données");
+      }
+      else {
+        res.status(200).json({authorization: true, image:resultat.rows[0].image});
+      }
+    })
+  } 
+  catch(error) {
+    res.status(500).send(error);
+  }
+})
+
+app.put('/user/dessin', middlewares.authentificateToken,upload.single('file'), async (req,res) => {
+  try {
+    const id_user = req.user.id_user
+    const imageFile = req.body.file;
+    const base64Data = imageFile.replace(/^data:image\/png;base64,/, '')
+    const requete_SQL = 'UPDATE dessin SET image=$1, nom=$2, visibilite=$3 WHERE id_user = $4 and nom = $5';
+    console.log(req.body);
+    pool.query(requete_SQL,[base64Data,req.body.newName,req.body.public,id_user,req.body.oldName], (erreur, resultat) => {
+      if (erreur) {
+        console.error("problème de recherche dans la bdd", erreur);
+        res.status(500).send("Erreur lors de la recherche dans la base de données");
+      }
+      else {
+        res.status(200).json({authorization: true});
+      }
+    })
+  } 
+  catch(error) {
+    res.status(500).send(error);
+  }
+})
+
+app.get('/user/dessin', middlewares.authentificateToken, async (req, res) => {
+  try {
+    const id_user = req.user.id_user
     const requete_SQL = 'SELECT image, nom, visibilite, favori FROM dessin WHERE id_user = $1';
     pool.query(requete_SQL, [id_user], (erreur, resultat) => {
       if (erreur) {
@@ -212,7 +247,265 @@ app.get('/dessin/chercher', middlewares.authentificateToken, async (req, res) =>
   }
 });
 
+app.delete('/user/dessin', middlewares.authentificateToken, async (req,res) => {
+  try {
+    const id_user = req.user.id_user
+    const id_dessin = await FoundIdDessinWithNomAndIdUser(id_user,req.body.nom);
+    const requete_SQL = 'delete from dessin where id_dessin = $1'
+    pool.query(requete_SQL, [id_dessin], (erreur,resultat) => {
+      if (erreur) {
+        console.error("problème de recherche dans la bdd", erreur);
+        res.status(500).send("Erreur lors de la recherche dans la base de données");
+      }
+      else {
+        res.status(200).json({authorization: true});
+      }
+    })
+  }
+  catch (error){
+    res.status(500).send(error);
+  }
+})
 
+app.put('/user/dessin/favori', middlewares.authentificateToken, async(req,res) =>{
+  try {
+    console.log('favori');
+    const id_user = req.user.id_user
+    const id_dessin = await FoundIdDessinWithNomAndIdUser(id_user,req.body.nom);
+    const requete_SQL = 'UPDATE dessin SET favori=$1 where id_dessin = $2'
+    pool.query(requete_SQL,[true,id_dessin], (erreur, resultat) => {
+      if (erreur) {
+        console.error("problème de recherche dans la bdd", erreur);
+        res.status(500).send("Erreur lors de la recherche dans la base de données");
+      }
+      else {
+        res.status(200).json({authorization: true});
+      }
+    })
+  } 
+  catch(error) {
+    res.status(500).send(error);
+  }
+})
+
+app.put('/user/dessin/unfavori', middlewares.authentificateToken, async (req,res) => {
+  try {
+    console.log('unfavorite');
+    const id_user = req.user.id_user;
+    const id_dessin = await FoundIdDessinWithNomAndIdUser(id_user,req.body.nom);
+    const requete_SQL = 'UPDATE dessin SET favori=$1 where id_dessin = $2' 
+    pool.query(requete_SQL,[false,id_dessin], (erreur, resultat) => {
+      if (erreur) {
+        console.error("problème de recherche dans la bdd", erreur);
+        res.status(500).send("Erreur lors de la recherche dans la base de données");
+      }
+      else {
+        res.status(200).json({authorization: true});
+      }
+    })
+  }
+  catch(error) {
+    res.status(500).send(error);
+  }
+})
+
+app.put('/user/dessin/public', middlewares.authentificateToken, async(req,res) =>{
+  try {
+    console.log('favori');
+    const id_user = req.user.id_user
+    const id_dessin = await FoundIdDessinWithNomAndIdUser(id_user,req.body.nom);
+    const requete_SQL = 'UPDATE dessin SET visibilite=$1 where id_dessin = $2'
+    pool.query(requete_SQL,[2,id_dessin], (erreur, resultat) => {
+      if (erreur) {
+        console.error("problème de recherche dans la bdd", erreur);
+        res.status(500).send("Erreur lors de la recherche dans la base de données");
+      }
+      else {
+        res.status(200).json({authorization: true});
+      }
+    })
+  } 
+  catch(error) {
+    res.status(500).send(error);
+  }
+})
+
+app.put('/user/dessin/unpublic', middlewares.authentificateToken, async(req,res) =>{
+  try {
+    console.log('favori');
+    const id_user = req.user.id_user
+    const id_dessin = await FoundIdDessinWithNomAndIdUser(id_user,req.body.nom);
+    const requete_SQL = 'UPDATE dessin SET visibilite=$1 where id_dessin = $2'
+    pool.query(requete_SQL,[1,id_dessin], (erreur, resultat) => {
+      if (erreur) {
+        console.error("problème de recherche dans la bdd", erreur);
+        res.status(500).send("Erreur lors de la recherche dans la base de données");
+      }
+      else {
+        res.status(200).json({authorization: true});
+      }
+    })
+  } 
+  catch(error) {
+    res.status(500).send(error);
+  }
+})
+
+function verif_mdp(mdp,id_user){
+  return new Promise((resolve, reject) => {
+    const requete_SQL = "SELECT mdp FROM utilisateur WHERE id_user=$1";
+    pool.query(requete_SQL, [id_user], (erreur, resultatSQL) => {
+      if (erreur) {
+        console.log("problème dans la recherche de l'utilisateur", erreur);
+        reject(erreur);
+      } 
+      else {
+        const mdpcrypte = resultatSQL.rows[0].mdp;
+        console.log(mdp)
+        console.log(mdpcrypte)
+        bcrypt.compare(mdp, mdpcrypte, (err, result) => {
+        if(err){
+          console.log("test1");
+          resolve(false);
+        }
+        else{
+          if(result){
+            console.log("test2")
+            resolve(true);
+          }
+          else{
+            console.log("test3")
+            resolve(false)
+          }
+        }
+        })
+      };
+    });
+  })
+}
+
+
+app.put('/user/pseudo', middlewares.authentificateToken, async(req,res) => {
+  try{
+    const id_user = req.user.id_user;
+    const verification = await verif_mdp(req.body.mdp,id_user);
+    const requete_SQL = 'UPDATE utilisateur SET pseudo=$1 where id_user=$2'
+    if (verification) {
+      pool.query(requete_SQL,[req.body.newPseudo,id_user],(erreur,resultat) => {
+        if (erreur) {
+          console.error("problème de recherche dans la bdd", erreur);
+          res.status(500).send("Erreur lors de la recherche dans la base de données");
+        }
+        else {
+          res.status(200).json({authorization: true})
+        }
+      })
+    }
+    else {
+      res.status(200).json({authorization: false})
+    }
+  }
+  catch (error){
+    res.status(500).send(error);
+  }
+})
+
+app.put('/user/mdp', middlewares.authentificateToken, async(req,res) => {
+  try{
+    const id_user = req.user.id_user;
+    const verification = await verif_mdp(req.body.oldMdp,id_user);
+    const requete_SQL = 'UPDATE utilisateur SET mdp=$1 where id_user=$2'
+    if (verification) {
+      pool.query(requete_SQL,[get_hash(req.body.newMdp),id_user],(erreur,resultat) => {
+        if (erreur) {
+          console.error("problème de recherche dans la bdd", erreur);
+          res.status(500).send("Erreur lors de la recherche dans la base de données");
+        }
+        else {
+          res.status(200).json({authorization: true})
+        }
+      })
+    }
+    else {
+      res.status(200).json({authorization: false})
+    }
+  }
+  catch (error){
+    res.status(500).send(error);
+  }
+})
+
+app.delete('/user', middlewares.authentificateToken, async(req,res) => {
+  try{
+    const id_user = req.user.id_user;
+    const requete_SQL = 'DELETE FROM utilisateur WHERE id_user=$1'
+      pool.query(requete_SQL,[id_user],(erreur,resultat) => {
+        if (erreur) {
+          console.error("problème de recherche dans la bdd", erreur);
+          res.status(500).send("Erreur lors de la recherche dans la base de données");
+        }
+        else {
+          res.clearCookie('token')
+          middlewares.deleteTokenWithId(req.user.id_user);
+          res.status(200).json({authorization: true})
+        }
+      })
+    }
+  catch (error){
+    res.status(500).send(error);
+  }
+})
+
+app.post('user/public/dessin/', middlewares.authentificateToken, (req ,res) => {
+  const requete_SQL = `SELECT pseudo,nom,image, Call estLike($1,id_dessin) as like FROM utilisateur, dessin
+  WHERE dessin.id_user = utilisateur.id_user and dessin 
+  and visibilite = 2 
+  and dessin.nom like '%$2%' 
+  and utilisateur.pseudo like '%$3%'`;
+  const id_user = req.user.id_user;
+  const pseudo = req.body.pseudo;
+  const nom_dessin = req.body.nom_dessin;
+  pool.query(requete_SQL, [id_user,nom_dessin,pseudo], (erreur, resultat) => {
+    if (erreur) {
+      console.error("problème de recherche dans la bdd", erreur);
+      res.status(500).send("Erreur lors de la recherche dans la base de données");
+    }
+    else {
+      const images = resultat.rows.map(row => ({ //crée un tableau de dictionnaire avec les données de chaque image
+        imageData: row.image,
+        nom: row.nom,
+        pseudo: row.pseudo,
+        like: row.like
+      }));
+      res.status(200).json({
+        authorization: true,
+        data: images
+      });
+    }
+  })
+})
+
+app.post('public/dessin', (req,res) => {
+  const requete_SQL = `SELECT pseudo,nom,image FROM utilisateur, dessin WHERE utilisateur.id_user = dessin.id_user`
+  const pseudo = req.body.pseudo;
+  const nom_dessin = req.body.nom_dessin;
+  pool.query(requete_SQL, [id_user,nom_dessin,pseudo], (erreur, resultat) => {
+    if (erreur) {
+      console.error("problème de recherche dans la bdd", erreur);
+      res.status(500).send("Erreur lors de la recherche dans la base de données");
+    }
+    else {
+      const images = resultat.rows.map(row => ({ //crée un tableau de dictionnaire avec les données de chaque image
+        imageData: row.image,
+        nom: row.nom,
+        pseudo: row.pseudo,
+      }));
+      res.status(200).json({
+        data: images
+      });
+    }
+  })
+})
 
 app.get('/', (req, res) => {
   res.send('Hello, World!');
@@ -221,3 +514,5 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
 });
+
+
