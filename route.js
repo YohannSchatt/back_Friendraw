@@ -1,4 +1,5 @@
 const express = require('express');
+const http = require('http');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const bodyParser = require('body-parser');
@@ -14,6 +15,7 @@ const { rejects } = require('assert');
 
 
 const port = 3000; 
+const portWS = 8080;
 
 const pool = new Pool({
   host: 'localhost',
@@ -24,7 +26,8 @@ const pool = new Pool({
 })
 
 const app = express();
-app.use(cors({ origin: 'http://localhost:5500', credentials: true }));
+const server = http.createServer(app);
+app.use(cors({ origin: ['http://localhost:5500','ws://localhost:8080'], credentials: true }));
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 app.use(cookieParser());
@@ -47,6 +50,46 @@ function get_hash(password){
   const saltRounds = 10;
   return bcrypt.hashSync(password, saltRounds); // prefere the async "hash" method in production
 }
+
+
+//--------------------Web Socket------------------------------------------------
+
+const WebSocket = require('ws');
+
+const wss = new WebSocket.Server({ server });
+
+var likes = new Map()
+
+function CreationLikes() {
+  const requete_SQL = 'SELECT pseudo,nom,countLike(id_dessin) as nb_like from utilisateur,dessin WHERE utilisateur.id_user = dessin.id_user';
+  pool.query(requete_SQL, (erreur, resultat) => {
+    if (erreur){
+      console.log(erreur)
+      throw new Error();
+    }
+    else {
+      resultat.rows.forEach( row => {
+        console.log(row);
+        likes.set(`${row.nom}/${row.pseudo}`,row.nb_like); //`${dessin.nom}/${utilisateur.pseudo}` est la forme de l'id de chaque item dans le front
+      })
+    }
+ })
+}
+
+CreationLikes()
+
+wss.on('connection', (ws) => {
+  console.log('Client connecté');
+})
+
+server.listen(portWS, () => {
+  console.log(`WebSocket server listening on port ${portWS}`);
+});
+
+console.log('WebSocket server is running on ws://localhost:8080');
+
+
+//-------------------------------Route------------------------------------
 
 app.get('/user', (req, res) => {
   // Exemple de requête SQL
@@ -127,7 +170,6 @@ app.get('/user/verification', middlewares.authentificateToken, (req,res) =>{
 function FoundIdUserWithPseudo(pseudo) {
   return new Promise((resolve, reject) => {
     const requete_SQL1 = "SELECT id_user FROM utilisateur WHERE pseudo=$1";
-    console.log(pseudo)
     pool.query(requete_SQL1, [pseudo], (erreur, resultat) => {
       if (erreur) {
         console.log("problème dans la recherche de l'utilisateur", erreur);
@@ -145,10 +187,9 @@ function FoundIdDessinWithNomAndIdUser(id_user,nom) {
     const requete_SQL = "SELECT id_dessin FROM dessin WHERE id_user=$1 and nom = $2";
     pool.query(requete_SQL, [id_user,nom], (erreur, resultat) => {
       if (erreur) {
-        console.log("problème dans la recherche de l'utilisateur", erreur);
+        console.log(erreur);
         reject(erreur);
       } else {
-        console.log(resultat.rows[0].id_dessin);
         resolve(resultat.rows[0].id_dessin); // Renvoie l'ID unique par pseudo
       }
     });
@@ -162,12 +203,14 @@ app.post('/user/dessin', middlewares.authentificateToken,upload.single('file'), 
     const visibilite = req.body.public; //necessite d'utiliser un parser d'un form car le json empêche l'envoie correct des fichiers
     const imageFile = req.body.file;
     const base64Data = imageFile.replace(/^data:image\/png;base64,/, '')
+    const pseudo = await getPseudoWithIdUser(id_user);
     const requete_SQL = 'CALL ajout_dessin($1, $2, $3, $4)';
     pool.query(requete_SQL, [base64Data,visibilite,nom, id_user], (erreur, resultat) => {
       if (erreur) {
         console.error("problème d'ajout dans la bdd", erreur);
         res.status(500).send("Erreur lors de l'ajout dans la base de données");
       } else {
+        likes[`${pseudo}/${nom}`] = 0;
         res.status(201).json({authorization: true});
       }
     });
@@ -177,6 +220,20 @@ app.post('/user/dessin', middlewares.authentificateToken,upload.single('file'), 
     res.status(500).send("Une erreur est survenue lors de la recherche de l'utilisateur");
   }
 });
+
+function getPseudoWithIdUser(id_user) {
+  return new Promise((resolve, reject) => {
+    const requete_SQL1 = "SELECT pseudo FROM utilisateur WHERE id_user=$1";
+    pool.query(requete_SQL1, [id_user], (erreur, resultat) => {
+      if (erreur) {
+        console.log(erreur);
+        reject(erreur);
+      } else {
+        resolve(resultat.rows[0].pseudo); // Renvoie l'ID unique par pseudo
+      }
+    });
+  });
+}
 
 app.post('/user/dessin/select', middlewares.authentificateToken, async (req,res) => {
   try {
@@ -203,7 +260,6 @@ app.put('/user/dessin', middlewares.authentificateToken,upload.single('file'), a
     const imageFile = req.body.file;
     const base64Data = imageFile.replace(/^data:image\/png;base64,/, '')
     const requete_SQL = 'UPDATE dessin SET image=$1, nom=$2, visibilite=$3 WHERE id_user = $4 and nom = $5';
-    console.log(req.body);
     pool.query(requete_SQL,[base64Data,req.body.newName,req.body.public,id_user,req.body.oldName], (erreur, resultat) => {
       if (erreur) {
         console.error("problème de recherche dans la bdd", erreur);
@@ -461,10 +517,8 @@ app.post('/user/public/dessin', middlewares.authentificateToken, (req ,res) => {
   and dessin.nom like '%' || $2 || '%' 
   and utilisateur.pseudo like '%' || $3 || '%'`;
   const id_user = req.user.id_user;
-  console.log(id_user)
   const pseudo = req.body.pseudo;
   const nom_dessin = req.body.nom;
-  console.log(req.body)
   pool.query(requete_SQL, [id_user,nom_dessin,pseudo], (erreur, resultat) => {
     if (erreur) {
       console.error("problème de recherche dans la bdd", erreur);
@@ -521,15 +575,32 @@ app.post('/user/dessin/like', middlewares.authentificateToken, async (req,res) =
     const id_user = req.user.id_user;
     const id_user_auteur = await FoundIdUserWithPseudo(req.body.pseudo);
     const id_dessin = await FoundIdDessinWithNomAndIdUser(id_user_auteur,req.body.nom);
+    const drawingId = `${req.body.nom}/${req.body.pseudo}`;
     pool.query(requete_SQL, [id_user,id_dessin], (erreur , resultat) => {
       if (erreur) {
         console.error("problème de recherche dans la bdd", erreur);
         res.status(500).send("Erreur lors de la recherche dans la base de données");
       }
       else {
-        res.status(200).json({
-          authorization: true
-        })
+        if (likes.has(drawingId)){
+          const nb_like = likes.get(drawingId)+1
+          likes.set(drawingId,nb_like);
+          wss.clients.forEach((client) => { //envoie au client par websockets du nombre de like pour le mettre à jour en temps réel
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify({
+                type: 'updateLikes',
+                drawingId: drawingId,
+                likes: nb_like
+              }));
+            }
+          });
+          res.status(200).json({
+            authorization: true
+          })
+        }
+        else {
+          res.status(500).send("Le dessin que vous avez liké n'existe pas");
+        }
       }
     })
   }
@@ -545,15 +616,32 @@ app.delete('/user/dessin/like', middlewares.authentificateToken, async (req,res)
     const id_user = req.user.id_user;
     const id_user_auteur = await FoundIdUserWithPseudo(req.body.pseudo);
     const id_dessin = await FoundIdDessinWithNomAndIdUser(id_user_auteur,req.body.nom);
+    const drawingId = `${req.body.nom}/${req.body.pseudo}`;
     pool.query(requete_SQL, [id_user,id_dessin], (erreur , resultat) => {
       if (erreur) {
         console.error("problème de recherche dans la bdd", erreur);
         res.status(500).send("Erreur lors de la recherche dans la base de données");
       }
       else {
-        res.status(200).json({
-          authorization: true
-        })
+        if (likes.has(drawingId)){
+          const nb_like = likes.get(drawingId)-1
+          likes.set(drawingId,nb_like)
+          wss.clients.forEach((client) => { //envoie au client par websockets du nombre de like pour le mettre à jour en temps réel
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify({
+                type: 'updateLikes',
+                drawingId: drawingId,
+                likes: nb_like
+              }));
+            }
+          });
+          res.status(200).json({
+            authorization: true
+          })
+        }
+        else {
+          res.status(500).send("Le dessin que vous avez liké n'existe pas");
+        }
       }
     })
   }
@@ -654,45 +742,3 @@ app.delete('/admin/signalement' ,middlewares.authentificateToken, middlewares.ve
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
 });
-
-
-
-//--------------------Web Socket------------------------------------------------
-
-const WebSocket = require('ws');
-
-const wss = new WebSocket.Server({ server });
-//`${dessin.nom}/${dessin.pseudo}`
-let likes = {}; // Un objet pour stocker les likes par dessin
-
-wss.on('connection', (ws) => {
-  console.log('Client connected');
-
-  // Écoute des messages du client
-  ws.on('message', (message) => {
-    const data = JSON.parse(message);
-    
-    if (data.type === 'like') {
-      const { drawingId } = data;
-      
-      // Mettre à jour le nombre de likes pour le dessin spécifié
-      if (!likes[drawingId]) {
-        likes[drawingId] = 0;
-      }
-      likes[drawingId] += 1;
-
-      // Diffuser la mise à jour à tous les clients connectés
-      wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(JSON.stringify({
-            type: 'updateLikes',
-            drawingId: drawingId,
-            likes: likes[drawingId]
-          }));
-        }
-      });
-    }
-  });
-});
-
-console.log('WebSocket server is running on ws://localhost:8080');
