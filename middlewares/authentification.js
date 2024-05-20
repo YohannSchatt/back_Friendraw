@@ -32,6 +32,17 @@ function verifyAccessToken(token) {
     }
 }
 
+function verifyAdminRight(req,res,next){
+  const id_user = req.user.id_user
+  const right = req.user.right
+  if (right == 3){
+    next()
+  }
+  else {
+    return res.status(200).json({ authorization: false });
+  }
+}
+
     // Verify a refresh token
 function CreateRefreshToken(id_user,right) {
   const payload = {
@@ -89,4 +100,4 @@ function PrintAllPseudoToken() {
   }
 }
 
-module.exports = { sendRefreshToken,authentificateToken, appendMap, findTokenUser, existToken, deleteTokenWithId, deleteTokenWithToken };
+module.exports = { verifyAdminRight,sendRefreshToken,authentificateToken, appendMap, findTokenUser, existToken, deleteTokenWithId, deleteTokenWithToken };
