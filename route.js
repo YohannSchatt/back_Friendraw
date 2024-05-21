@@ -210,7 +210,7 @@ app.post('/user/dessin', middlewares.authentificateToken,upload.single('file'), 
         console.error("problème d'ajout dans la bdd", erreur);
         res.status(500).send("Erreur lors de l'ajout dans la base de données");
       } else {
-        likes[`${pseudo}/${nom}`] = 0;
+        likes.set(`${nom}/${pseudo}`,0);
         res.status(201).json({authorization: true});
       }
     });
@@ -258,6 +258,7 @@ app.put('/user/dessin', middlewares.authentificateToken,upload.single('file'), a
   try {
     const id_user = req.user.id_user
     const imageFile = req.body.file;
+    const pseudo = await getPseudoWithIdUser(id_user);
     const base64Data = imageFile.replace(/^data:image\/png;base64,/, '')
     const requete_SQL = 'UPDATE dessin SET image=$1, nom=$2, visibilite=$3 WHERE id_user = $4 and nom = $5';
     pool.query(requete_SQL,[base64Data,req.body.newName,req.body.public,id_user,req.body.oldName], (erreur, resultat) => {
@@ -266,6 +267,19 @@ app.put('/user/dessin', middlewares.authentificateToken,upload.single('file'), a
         res.status(500).send("Erreur lors de la recherche dans la base de données");
       }
       else {
+        const idDrawing = `${req.body.oldName}/${pseudo}`;
+        const nb_like = likes.get(idDrawing);
+        likes.set(`${req.body.newName}/${pseudo}`,nb_like);
+        likes.delete(idDrawing);
+        wss.clients.forEach((client) => { //envoie au client par websockets du nombre de like pour le mettre à jour en temps réel
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+              type: 'updateNomDessin',
+              newId: `${req.body.newName}/${pseudo}`,
+              oldId: idDrawing
+            }));
+          }
+        });
         res.status(200).json({authorization: true});
       }
     })
@@ -290,7 +304,6 @@ app.get('/user/dessin', middlewares.authentificateToken, async (req, res) => {
           visibilite: row.visibilite,
           favori: row.favori
         }));
-        console.log(images[0]);
         res.status(200).json({
           authorization: true,
           images: images
