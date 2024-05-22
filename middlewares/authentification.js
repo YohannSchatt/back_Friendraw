@@ -1,8 +1,7 @@
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcrypt');
 
 var tokenAccessUser = new Map();
-var tokenPersistentUser = new Map();
+//var tokenPersistentUser = new Map();
 
 function authentificateToken(req, res, next)  {    
     const result = verifyAccessToken(req.cookies.token); //si le token est bon
