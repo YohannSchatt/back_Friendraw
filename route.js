@@ -11,8 +11,8 @@ const { getPseudoWithIdUser, FoundIdDessinWithNomAndIdUser, FoundIdUserWithPseud
 const multer  = require('multer'); // Middleware pour gérer les fichiers
 
 
-const port = process.env.PORT; 
-const portWS = process.env.PORTWS;
+const port = process.env.PORT || 3000; 
+const portWS = process.env.PORTWS || 8080;
 
 const app = express();
 const server = http.createServer(app);
