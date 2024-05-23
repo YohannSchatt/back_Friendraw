@@ -12,12 +12,11 @@ const multer  = require('multer'); // Middleware pour gérer les fichiers
 
 
 const port = process.env.PORT; 
-const portFront = process.env.PORTFRONT;
 const portWS = process.env.PORTWS;
 
 const app = express();
 const server = http.createServer(app);
-app.use(cors({ origin: [`http://localhost:${portFront}`,`ws://localhost:${portWS}`], credentials: true }));
+app.use(cors({ origin: [`${process.env.URL_FRONT}`,`ws://localhost:${portWS}`], credentials: true }));
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 app.use(cookieParser());
