@@ -2,9 +2,9 @@
   "name": "back",
   "version": "1.0.0",
   "description": "To make it easy for you to get started with GitLab, here's a list of recommended next steps.",
-  "main": "route.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node route",
+    "start": "node index",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
