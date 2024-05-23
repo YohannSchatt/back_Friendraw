@@ -21,10 +21,10 @@ app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 app.use(cookieParser());
 
-const usersRouter = require('./route/user');
-const usersDessinRouter = require('./route/UserDessin')
-const AdminRouter = require('./route/admin')
-const publicRouter = require('./route/public')
+const usersRouter = require('./route/user.js');
+const usersDessinRouter = require('./route/UserDessin.js')
+const AdminRouter = require('./route/admin.js')
+const publicRouter = require('./route/public.js')
 
 
 app.use('/user', usersRouter);
