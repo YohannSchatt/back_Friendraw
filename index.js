@@ -11,10 +11,9 @@ const { getPseudoWithIdUser, FoundIdDessinWithNomAndIdUser, FoundIdUserWithPseud
 const multer  = require('multer'); // Middleware pour gérer les fichiers
 
 
-const port = process.env.PORT || 3000; 
+const PORT = process.env.PORT || 3001; 
 
 const app = express();
-const server = http.createServer(app);
 app.use(cors({ origin: [`${process.env.URL_FRONT}`], credentials: true }));
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
@@ -52,8 +51,8 @@ app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
 
-app.listen(port, () => {
-  console.log(`Server is running on http://localhost:${port}`);
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
 });
 
 
@@ -61,6 +60,7 @@ app.listen(port, () => {
 
 likes.CreateLikes();
 
+const server = http.createServer(app);
 const WebSocket = require('ws');
 
 const wss = new WebSocket.Server({ server });
@@ -69,9 +69,6 @@ wss.on('connection', (ws) => {
   console.log('Client connecté');
 })
 
-server.listen(PORT, () => {
-  console.log(`WebSocket server listening on port ${portWS}`);
-});
 
 app.post('/user/dessin/like', middlewares.authentificateToken, async (req,res) => {
   try {
@@ -190,6 +187,5 @@ app.put('/user/dessin/', middlewares.authentificateToken,upload.single('file'), 
     res.status(500).send(error);
   }
 })
-
 
 module.exports = wss
