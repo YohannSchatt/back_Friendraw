@@ -12,11 +12,10 @@ const multer  = require('multer'); // Middleware pour gérer les fichiers
 
 
 const port = process.env.PORT || 3000; 
-const portWS = process.env.PORTWS || 8080;
 
 const app = express();
 const server = http.createServer(app);
-app.use(cors({ origin: [`${process.env.URL_FRONT}`,`ws://localhost:${portWS}`], credentials: true }));
+app.use(cors({ origin: [`${process.env.URL_FRONT}`], credentials: true }));
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 app.use(cookieParser());
@@ -70,7 +69,7 @@ wss.on('connection', (ws) => {
   console.log('Client connecté');
 })
 
-server.listen(portWS, () => {
+server.listen(PORT, () => {
   console.log(`WebSocket server listening on port ${portWS}`);
 });
 
