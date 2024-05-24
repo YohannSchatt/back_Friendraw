@@ -46,6 +46,18 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage })
 
+//-------------------------Back Online--------------------------------------
+
+// Route de health check
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
+app.listen(port, () => {
+  console.log(`Server is running on http://localhost:${port}`);
+});
+
+
 //-------------------------Web Socket---------------------------------------
 
 likes.CreateLikes();
@@ -180,11 +192,5 @@ app.put('/user/dessin/', middlewares.authentificateToken,upload.single('file'), 
   }
 })
 
-
-//-------------------------Back Online--------------------------------------
-
-app.listen(port, () => {
-  console.log(`Server is running on http://localhost:${port}`);
-});
 
 module.exports = wss
