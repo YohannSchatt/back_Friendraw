@@ -6,6 +6,7 @@ const pool = require('./../database/database.js');
 const {verif_mdp,get_hash} = require('./../annexe/mdp.js')
 const bcrypt = require('bcrypt');
 
+//route qui permet de récupérer tous les utilisateurs (réservé aux admins)
 router.get('/', middlewares.authentificateToken, middlewares.verifyAdminRight, (req, res) => {
     // Exemple de requête SQL
     const requeteSQL = 'SELECT * FROM utilisateur';
@@ -21,7 +22,7 @@ router.get('/', middlewares.authentificateToken, middlewares.verifyAdminRight, (
     });
 });
   
-  
+//route qui permet de créer un compte utilisateur grâce à un pseudo, un mot de passe et un email 
 router.post('/inscription', (req, res) => {
     const { pseudo, mdp, email } = req.body;
     const requete_SQL = `CALL ajout_user($1, $2, $3)`;
@@ -35,7 +36,8 @@ router.post('/inscription', (req, res) => {
       }
     })
 });
-  
+
+//route qui permet de se connecter grâce à un email et un mot de passe
 router.post('/connexion', (req,res) => {
     const { email, mdp } = req.body;
     const requete_SQL = 'SELECT mdp,id_user,pseudo,droit FROM utilisateur WHERE adresse_mail = $1'
@@ -70,19 +72,21 @@ router.post('/connexion', (req,res) => {
       }
     })
 })
-  
+
+//route qui permet de déconnecter l'utilisateur
 router.get('/deconnexion', middlewares.authentificateToken, (req,res) => {
     middlewares.deleteTokenWithId(req.user.id_user)
     res.clearCookie('token');
     res.status(200).json({ authorization: true });
 })
-  
+
+//route qui permet de vérifier si l'utilisateur est connecté
 router.get('/verification', middlewares.authentificateToken, (req,res) =>{
     //middlewares.sendRefreshToken(req.user,res);
     res.status(200).json({ authorization: true });
 })
   
-
+//route qui permet de modifier le mot de passe
 router.put('/mdp', middlewares.authentificateToken, async(req,res) => {
     try{
       const id_user = req.user.id_user;
@@ -107,7 +111,8 @@ router.put('/mdp', middlewares.authentificateToken, async(req,res) => {
       res.status(500).send(error);
     }
 })
-  
+
+//route qui supprime un utilisateur
 router.delete('/', middlewares.authentificateToken, async(req,res) => {
     try{
       const id_user = req.user.id_user;
@@ -129,6 +134,7 @@ router.delete('/', middlewares.authentificateToken, async(req,res) => {
     }
 })
 
+//route qui met à jour le pseudo de l'utilisateur
 router.put('/pseudo', middlewares.authentificateToken, async(req,res) => {
     try{
       const id_user = req.user.id_user;
@@ -154,6 +160,7 @@ router.put('/pseudo', middlewares.authentificateToken, async(req,res) => {
     }
 })
 
+//Route pour rechercher un dessin public et si l'utilisateur a mis un like
 router.post('/public/dessin', middlewares.authentificateToken, (req ,res) => {
     const requete_SQL = `SELECT pseudo,nom,image, estLike($1,id_dessin) as aime, countLike(id_dessin) as nb_aime FROM utilisateur, dessin
     WHERE dessin.id_user = utilisateur.id_user

@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const pool = require('./../database/database.js');
 
+//route qui permet de récupérer tous les dessins publics (visibilité = 2)
+//Il est possible de filtrer les dessins par pseudo et par nom
 router.post('/dessin', (req,res) => {
     const requete_SQL = `SELECT pseudo,nom,image,countLike(id_dessin) as nb_aime FROM utilisateur, dessin 
     WHERE utilisateur.id_user = dessin.id_user

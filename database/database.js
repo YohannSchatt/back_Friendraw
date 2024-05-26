@@ -1,5 +1,6 @@
 const { Pool } = require('pg');
 
+//information permettant de se connecter a la BDD
 const pool = new Pool({
     host: process.env.URLDB,
     user: process.env.USER,

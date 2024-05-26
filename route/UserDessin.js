@@ -21,7 +21,7 @@ const storage = multer.diskStorage({
   
 const upload = multer({ storage: storage });
   
-
+//Ajout d'un signalement
 router.post('/report', middlewares.authentificateToken, async (req,res) => {
     try{
       const requete_SQL = 'CALL ajout_signalement($1,$2,$3)';
@@ -48,6 +48,7 @@ router.post('/report', middlewares.authentificateToken, async (req,res) => {
     }
   })
 
+//Ajout d'un dessin
 router.post('/', middlewares.authentificateToken,upload.single('file'), async (req, res) => {
     try {
       const id_user = req.user.id_user;
@@ -72,7 +73,8 @@ router.post('/', middlewares.authentificateToken,upload.single('file'), async (r
       res.status(500).send("Une erreur est survenue lors de la recherche de l'utilisateur");
     }
   });
-  
+
+//Permet de récupérer un dessin en fonction de l'id_user et du nom
 router.post('/select', middlewares.authentificateToken, async (req,res) => {
     try {
       const id_user = req.user.id_user
@@ -91,7 +93,8 @@ router.post('/select', middlewares.authentificateToken, async (req,res) => {
       res.status(500).send(error);
     }
   })
-  
+
+//Permet de récupérer les dessins d'un utilisateur
 router.get('/', middlewares.authentificateToken, async (req, res) => {
     try {
       const id_user = req.user.id_user
@@ -119,7 +122,8 @@ router.get('/', middlewares.authentificateToken, async (req, res) => {
       res.status(500).send("Une erreur est survenue lors de la recherche de l'utilisateur");
     }
   });
-  
+
+//Permet de supprimer un dessin en fonction de l'id_user et du nom
 router.delete('/', middlewares.authentificateToken, async (req,res) => {
     try {
       const id_user = req.user.id_user
@@ -141,7 +145,8 @@ router.delete('/', middlewares.authentificateToken, async (req,res) => {
       res.status(500).send(error);
     }
   })
-  
+
+//Permet d'ajouter un dessin en favori
 router.put('/favori', middlewares.authentificateToken, async(req,res) =>{
     try {
       const id_user = req.user.id_user
@@ -161,7 +166,8 @@ router.put('/favori', middlewares.authentificateToken, async(req,res) =>{
       res.status(500).send(error);
     }
   })
-  
+
+//Permet d'enlever un dessin des favoris
 router.put('/unfavori', middlewares.authentificateToken, async (req,res) => {
     try {
       const id_user = req.user.id_user;
@@ -181,7 +187,8 @@ router.put('/unfavori', middlewares.authentificateToken, async (req,res) => {
       res.status(500).send(error);
     }
   })
-  
+
+//Permet de rendre un dessin public
 router.put('/public', middlewares.authentificateToken, async(req,res) =>{
     try {
       const id_user = req.user.id_user
@@ -201,7 +208,8 @@ router.put('/public', middlewares.authentificateToken, async(req,res) =>{
       res.status(500).send(error);
     }
   })
-  
+
+//Permet de rendre un dessin privé
 router.put('/unpublic', middlewares.authentificateToken, async(req,res) =>{
     try {
       console.log('favori');

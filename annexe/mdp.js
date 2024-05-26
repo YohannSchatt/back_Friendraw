@@ -1,11 +1,13 @@
 const bcrypt = require('bcrypt');
 const pool = require('./../database/database');
 
+//Permet de hash le mot de passe de l'utilisateur
 function get_hash(password){
-    const saltRounds = 10;
-    return bcrypt.hashSync(password, saltRounds); // prefere the async "hash" method in production
+    const saltRounds = 10;  //nombre de tour de hash
+    return bcrypt.hashSync(password, saltRounds); 
 }
 
+//Fonction qui vérifie le mot de passe de l'utilisateur
 function verif_mdp(mdp,id_user){
     return new Promise((resolve, reject) => {
       const requete_SQL = "SELECT mdp FROM utilisateur WHERE id_user=$1";

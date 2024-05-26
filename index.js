@@ -15,16 +15,17 @@ const PORT = process.env.PORT || 3001;
 
 const app = express();
 app.use(cors({ origin: [`${process.env.URL_FRONT}`], credentials: true }));
-app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.json({ limit: '50mb' })); //pour faire passer les images en base64
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
-app.use(cookieParser());
+app.use(cookieParser()); //faciliter l'utilisation des cookies
 
+// Import des routes
 const usersRouter = require('./route/user.js');
 const usersDessinRouter = require('./route/UserDessin.js')
 const AdminRouter = require('./route/admin.js')
 const publicRouter = require('./route/public.js')
 
-
+// Utilisation des routes
 app.use('/user', usersRouter);
 app.use('/user/dessin', usersDessinRouter);
 app.use('/admin', AdminRouter);
@@ -44,20 +45,10 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage })
 
-//-------------------------Back Online--------------------------------------
-
-// Route de health check
-app.get('/health', (req, res) => {
-  res.status(200).send('OK');
-});
-
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-});
-
 
 //-------------------------Web Socket---------------------------------------
 
+//Met à jour les likes des dessins lors du lancement du serveur
 likes.CreateLikes();
 
 const server = http.createServer(app);
@@ -65,11 +56,12 @@ const WebSocket = require('ws');
 
 const wss = new WebSocket.Server({ server });
 
+//Connexion d'un client
 wss.on('connection', (ws) => {
   console.log('Client connecté');
 })
 
-
+//Route pour ajouter un like à un dessin
 app.post('/user/dessin/like', middlewares.authentificateToken, async (req,res) => {
   try {
     const requete_SQL = 'INSERT INTO aime (id_user, id_dessin) VALUES ($1, $2)';
@@ -112,6 +104,7 @@ app.post('/user/dessin/like', middlewares.authentificateToken, async (req,res) =
   }
 })
 
+//Route pour supprimer un like à un dessin
 app.delete('/user/dessin/like', middlewares.authentificateToken, async (req,res) => {
   try {
     const requete_SQL = 'DELETE FROM aime WHERE id_user = $1 AND id_dessin = $2';
@@ -153,6 +146,7 @@ app.delete('/user/dessin/like', middlewares.authentificateToken, async (req,res)
   }
 })
 
+//Route pour modifier le nom d'un dessin et son image
 app.put('/user/dessin/', middlewares.authentificateToken,upload.single('file'), async (req,res) => {
   try {
     const id_user = req.user.id_user
@@ -187,5 +181,17 @@ app.put('/user/dessin/', middlewares.authentificateToken,upload.single('file'), 
     res.status(500).send(error);
   }
 })
+
+//-------------------------Back Online--------------------------------------
+
+// Route de healthcheck
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
+//Lance le serveur
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+});
 
 module.exports = wss
